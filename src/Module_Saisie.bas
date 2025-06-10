@@ -1,10 +1,14 @@
 Attribute VB_Name = "Module_Saisie"
 ' Module_Saisie.bas
-' Ajouter un quart de travail dans la feuille
+' v1.1 — correction bug quart de nuit
 '
-' Les heures en VBA sont stockées comme des fractions de 1 journée.
-' Ex: 0.5 = midi, 0.75 = 18h00
-' Pour convertir TimeValue("16:00") en heures : * 24
+' Bug trouvé en entrant un quart 22:00 → 00:30 :
+' (00:30 - 22:00) * 24 donnait -21.5h — complètement faux.
+' La raison : TimeValue("00:30") = 0.020... et TimeValue("22:00") = 0.916...
+' donc fin < debut et le résultat est négatif.
+'
+' Fix : si le résultat est négatif, on ajoute 24h.
+' C'est la solution la plus simple que j'ai trouvée.
 
 Sub AjouterQuart()
 
@@ -14,7 +18,6 @@ Sub AjouterQuart()
     Dim ligne As Long
     ligne = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
 
-    ' Saisie
     Dim dateQuart As String
     Dim heureDebut As String
     Dim heureFin As String
@@ -31,27 +34,46 @@ Sub AjouterQuart()
     heureDebut = InputBox("Heure de début (ex: 16:00) :", "Nouveau quart")
     If heureDebut = "" Then Exit Sub
 
+    If Not IsDate(heureDebut) Then
+        MsgBox "Heure de début invalide (ex: 16:00).", vbExclamation
+        Exit Sub
+    End If
+
     heureFin = InputBox("Heure de fin (ex: 22:30) :", "Nouveau quart")
     If heureFin = "" Then Exit Sub
 
+    If Not IsDate(heureFin) Then
+        MsgBox "Heure de fin invalide (ex: 22:30).", vbExclamation
+        Exit Sub
+    End If
+
     noteQuart = InputBox("Note (optionnel) :", "Nouveau quart")
 
-    ' Calculer les heures travaillées
+    ' Calcul des heures travaillées
     Dim debut As Double
     Dim fin As Double
     Dim heuresTravaillees As Double
 
     debut = TimeValue(heureDebut)
     fin = TimeValue(heureFin)
-
-    ' Conversion en heures (fraction de journée × 24)
     heuresTravaillees = (fin - debut) * 24
 
-    ' Calculer la paie estimée
+    ' Fix quart de nuit : si négatif, le quart traverse minuit
+    If heuresTravaillees < 0 Then
+        heuresTravaillees = heuresTravaillees + 24
+    End If
+
+    ' Validation : un quart de plus de 14h c'est probablement une erreur de saisie
+    If heuresTravaillees > 14 Then
+        Dim confirmer As Integer
+        confirmer = MsgBox("Ce quart fait " & Format(heuresTravaillees, "0.00") & "h — c'est correct ?", _
+                           vbYesNo + vbQuestion, "Vérification")
+        If confirmer = vbNo Then Exit Sub
+    End If
+
     Dim paie As Double
     paie = heuresTravaillees * TAUX_HORAIRE
 
-    ' Écrire dans la feuille
     ws.Cells(ligne, 1).Value = CDate(dateQuart)
     ws.Cells(ligne, 1).NumberFormat = "DD/MM/YYYY"
     ws.Cells(ligne, 2).Value = heureDebut
